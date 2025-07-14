@@ -144,7 +144,7 @@ class LocalEvaluationClient:
         return self.__filter_default_variants(variants)
 
     def __setup_connection_pool(self):
-        scheme, _, host = self.config.server_url.split('/', 3)
+        scheme, _, host = self.config.server_url.split('/', 2)
         timeout = self.config.flag_config_poller_request_timeout_millis / 1000
         self._connection_pool = HTTPConnectionPool(host, max_size=1, idle_timeout=30,
                                                    read_timeout=timeout, scheme=scheme)
