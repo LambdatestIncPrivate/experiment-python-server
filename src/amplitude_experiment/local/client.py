@@ -43,6 +43,7 @@ class LocalEvaluationClient:
         self.api_key = api_key
         self.config = config or LocalEvaluationConfig()
         self.assignment_service = None
+        self.request_path_prefix = ""
         if config and config.assignment_config:
             instance = Amplitude(config.assignment_config.api_key, config.assignment_config)
             self.assignment_service = AssignmentService(instance, AssignmentFilter(
@@ -144,7 +145,8 @@ class LocalEvaluationClient:
         return self.__filter_default_variants(variants)
 
     def __setup_connection_pool(self):
-        scheme, _, host = self.config.server_url.split('/', 3)
+        scheme, _, host, *rest = self.server_url.split('/', 3)
+        self.request_path_prefix = '/' + rest[0] if rest else ''
         timeout = self.config.flag_config_poller_request_timeout_millis / 1000
         self._connection_pool = HTTPConnectionPool(host, max_size=1, idle_timeout=30,
                                                    read_timeout=timeout, scheme=scheme)
