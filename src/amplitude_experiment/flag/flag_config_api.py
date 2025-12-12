@@ -1,5 +1,6 @@
 import json
 import threading
+import gzip
 from http.client import HTTPResponse, HTTPConnection, HTTPSConnection
 from typing import List, Optional, Callable, Mapping, Union, Tuple
 
@@ -37,7 +38,13 @@ class FlagConfigApiV2(FlagConfigApi):
         body = None
         try:
             response = conn.request('GET', f'{self.request_path_prefix}/sdk/v2/flags?v=0', body, headers)
-            response_body = response.read().decode("utf8")
+
+            # Handle gzip encoding. http.client does not handle gzip encoding automatically.
+            if response.getheader("Content-Encoding") == "gzip":
+                response_body = gzip.decompress(response.read()).decode("utf8")
+            else:
+                response_body = response.read().decode("utf8")
+
             if response.status != 200:
                 raise Exception(
                     f"[Experiment] Get flagConfigs - received error response: ${response.status}: ${response_body}")
