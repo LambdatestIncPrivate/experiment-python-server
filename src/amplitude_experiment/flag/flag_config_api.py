@@ -31,7 +31,8 @@ class FlagConfigApiV2(FlagConfigApi):
         headers = {
             'Authorization': f"Api-Key {self.deployment_key}",
             'Content-Type': 'application/json;charset=utf-8',
-            'X-Amp-Exp-Library': f"experiment-python-server/{__version__}"
+            'X-Amp-Exp-Library': f"experiment-python-server/{__version__}",
+            'Accept-Encoding': 'gzip'
         }
         body = None
         try:
@@ -185,7 +186,8 @@ class FlagConfigStreamApi:
         headers = {
             'Authorization': f"Api-Key {self.deployment_key}",
             'Content-Type': 'application/json;charset=utf-8',
-            'X-Amp-Exp-Library': f"experiment-python-server/{__version__}"
+            'X-Amp-Exp-Library': f"experiment-python-server/{__version__}",
+            'Accept-Encoding': 'gzip'
         }
 
         self.eventsource = EventSource(self.server_url, "/sdk/stream/v1/flags", headers, conn_timeout_millis)
