@@ -1,7 +1,9 @@
 # Builds and tests the LambdaTest amplitude-experiment fork and publishes an
 # immutable wheel after a release tag/backfill. Public PyPI version 1.8.1 is a
 # different artifact, so consumers must use the verified private wheel.
-# Upload auth is OIDC through the protected wheels-release environment.
+# Uploads use the existing AWS secret pair (AWS_*_PROD) — same structure as
+# auteur's app-agent uploads. Wheels are served via the same public CDN:
+#   https://realdevice-cache.lambdatest.com/KaneAI/wheels/...
 name: Release Wheel to S3
 
 on:
@@ -28,16 +30,14 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build-and-test:
+  release:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
       DIST_PREFIX: amplitude_experiment
-    outputs:
-      tag: ${{ steps.ref.outputs.tag }}
-      wheel: ${{ steps.meta.outputs.wheel }}
-      sha256: ${{ steps.meta.outputs.sha256 }}
-      commit: ${{ steps.meta.outputs.commit }}
+      PKG_DIR: amplitude-experiment
+      WHEELS_BUCKET: prod-realdevice-mobile-automation-v1
+      WHEELS_BASE_URL: https://realdevice-cache.lambdatest.com
     steps:
       - name: Resolve and validate tag
         id: ref
@@ -116,76 +116,30 @@ jobs:
             tests/remote/client_test.py
           python -m unittest discover -s ./tests -p '*_test.py'
 
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - name: Configure AWS credentials
+        if: github.event_name != 'pull_request'
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
         with:
-          name: wheel
-          path: dist/*.whl
-          retention-days: 5
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_PROD }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_PROD }}
+          aws-region: us-east-1
 
-  upload:
-    if: github.event_name != 'pull_request'
-    needs: build-and-test
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    environment: wheels-release
-    permissions:
-      id-token: write
-      contents: read
-    env:
-      PKG_DIR: amplitude-experiment
-      TAG: ${{ needs.build-and-test.outputs.tag }}
-      WHEEL: ${{ needs.build-and-test.outputs.wheel }}
-      SHA256: ${{ needs.build-and-test.outputs.sha256 }}
-      COMMIT: ${{ needs.build-and-test.outputs.commit }}
-    steps:
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: wheel
-          path: dist
-
-      - name: Verify artifact and upload configuration
+      - name: Upload to S3 (atomic, immutable)
+        if: github.event_name != 'pull_request'
         env:
-          ROLE_ARN: ${{ vars.WHEELS_UPLOAD_ROLE_ARN }}
-          AWS_REGION: ${{ vars.WHEELS_AWS_REGION }}
-          WHEELS_BUCKET: ${{ vars.WHEELS_BUCKET }}
-          WHEELS_BASE_URL: ${{ vars.WHEELS_BASE_URL }}
+          TAG: ${{ steps.ref.outputs.tag }}
+          WHEEL: ${{ steps.meta.outputs.wheel }}
+          SHA256: ${{ steps.meta.outputs.sha256 }}
+          COMMIT: ${{ steps.meta.outputs.commit }}
         run: |
           set -euo pipefail
-          [[ "${ROLE_ARN:-}" =~ ^arn:(aws|aws-us-gov|aws-cn):iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]+$ ]] || {
-            echo "::error::WHEELS_UPLOAD_ROLE_ARN is missing or invalid"
-            exit 1
-          }
-          [[ "${AWS_REGION:-}" =~ ^[a-z]{2}(-gov)?-[a-z0-9-]+-[0-9]$ ]] || {
-            echo "::error::WHEELS_AWS_REGION is missing or invalid"
-            exit 1
-          }
-          [[ "${WHEELS_BASE_URL:-}" =~ ^https://[A-Za-z0-9.-]+$ ]] || {
-            echo "::error::WHEELS_BASE_URL must be an HTTPS scheme+host with no path or trailing slash"
-            exit 1
-          }
-          [[ "${WHEELS_BUCKET:-}" =~ ^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$ ]] || {
-            echo "::error::WHEELS_BUCKET must be a 3-63 character DNS bucket name without dots"
-            exit 1
-          }
           echo "${SHA256}  dist/${WHEEL}" | sha256sum -c -
-
-      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
-        with:
-          role-to-assume: ${{ vars.WHEELS_UPLOAD_ROLE_ARN }}
-          aws-region: ${{ vars.WHEELS_AWS_REGION }}
-          role-session-name: wheels-${{ github.run_id }}
-
-      - name: Upload to S3 atomically
-        env:
-          WHEELS_BUCKET: ${{ vars.WHEELS_BUCKET }}
-          WHEELS_BASE_URL: ${{ vars.WHEELS_BASE_URL }}
-        run: |
-          set -euo pipefail
-          KEY="wheels/${PKG_DIR}/${TAG}/${WHEEL}"
+          KEY="KaneAI/wheels/${PKG_DIR}/${TAG}/${WHEEL}"
+          # --if-none-match '*' = atomic create-only write: fails with
+          # PreconditionFailed if the key exists — published wheels are immutable.
           aws s3api put-object --bucket "$WHEELS_BUCKET" --key "$KEY" \
             --body "dist/${WHEEL}" --if-none-match '*'
-          PKG_NAME="${WHEEL%%-*}"
-          PKG_NAME="${PKG_NAME//_/-}"
+          PKG_NAME="${WHEEL%%-*}"; PKG_NAME="${PKG_NAME//_/-}"
           {
             echo "### Wheel published (source commit ${COMMIT})"
             echo '```'
