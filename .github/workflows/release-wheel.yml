@@ -1,6 +1,9 @@
 # Builds and tests the LambdaTest amplitude-experiment fork and publishes an
 # immutable wheel after a release tag/backfill. Public PyPI version 1.8.1 is a
 # different artifact, so consumers must use the verified private wheel.
+# Fork releases use the lt-v* tag namespace (upstream amplitude owns v*);
+# the pre-fork tag v1.1.4 stays dispatch-backfillable solely as the
+# pre-provisioned rollback artifact.
 # Uploads use the existing AWS secret pair (AWS_*_PROD) — same structure as
 # auteur's app-agent uploads. Wheels are served via the same public CDN:
 #   https://realdevice-cache.lambdatest.com/KaneAI/wheels/...
@@ -8,7 +11,7 @@ name: Release Wheel to S3
 
 on:
   push:
-    tags: ['v*']
+    tags: ['lt-v*']
   pull_request:
     paths:
       - '.github/workflows/release-wheel.yml'
@@ -19,14 +22,25 @@ on:
   workflow_dispatch:
     inputs:
       ref:
-        description: 'Existing git tag to build (backfill), e.g. v1.1.4'
+        description: 'Existing lt-v tag to build and publish, e.g. lt-v1.8.2 (or the legacy v1.1.4)'
+        required: true
+  workflow_call:
+    inputs:
+      ref:
+        description: 'Existing lt-v tag to build and publish'
+        required: true
+        type: string
+    secrets:
+      AWS_ACCESS_KEY_ID_PROD:
+        required: true
+      AWS_SECRET_ACCESS_KEY_PROD:
         required: true
 
 permissions:
   contents: read
 
 concurrency:
-  group: release-wheel-${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref_name }}
+  group: release-wheel-${{ inputs.ref || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -43,15 +57,15 @@ jobs:
         id: ref
         env:
           EVENT: ${{ github.event_name }}
-          REF_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref_name }}
+          REF_INPUT: ${{ inputs.ref || github.ref_name }}
         run: |
           set -euo pipefail
           if [ "$EVENT" = "pull_request" ]; then
             echo "tag=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          [[ "$REF_INPUT" =~ ^v[0-9][A-Za-z0-9._-]*$ ]] || {
-            echo "::error::'$REF_INPUT' is not a release tag"
+          [[ "$REF_INPUT" =~ ^lt-v[0-9][A-Za-z0-9._-]*$ ]] || [ "$REF_INPUT" = "v1.1.4" ] || {
+            echo "::error::'$REF_INPUT' is not an lt-v release tag (or the legacy v1.1.4 rollback tag)"
             exit 1
           }
           echo "tag=$REF_INPUT" >> "$GITHUB_OUTPUT"
