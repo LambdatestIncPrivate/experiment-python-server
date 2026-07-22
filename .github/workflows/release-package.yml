@@ -126,3 +126,24 @@ jobs:
     secrets:
       AWS_ACCESS_KEY_ID_PROD: ${{ secrets.AWS_ACCESS_KEY_ID_PROD }}
       AWS_SECRET_ACCESS_KEY_PROD: ${{ secrets.AWS_SECRET_ACCESS_KEY_PROD }}
+
+  # Runs only after the wheel is actually on S3. Auto-notes list merged PRs
+  # since the previous tag and link the full compare diff; GitHub marks the
+  # newest release as Latest automatically.
+  github-release:
+    needs: [bump-and-tag, publish-wheel]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Create GitHub release with generated notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.bump-and-tag.outputs.tag }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --title "amplitude-experiment ${VERSION} (LambdaTest fork)" \
+            --generate-notes
