@@ -6,7 +6,7 @@
 # pre-provisioned rollback artifact.
 # Uploads use the existing AWS secret pair (AWS_*_PROD) — same structure as
 # auteur's app-agent uploads. Wheels are served via the same public CDN:
-#   https://realdevice-cache.lambdatest.com/KaneAI/wheels/...
+#   https://prod-mobile-automation-artefects.lambdatest.com/KaneAI/wheels/...
 name: Release Wheel to S3
 
 on:
@@ -51,7 +51,7 @@ jobs:
       DIST_PREFIX: amplitude_experiment
       PKG_DIR: amplitude-experiment
       WHEELS_BUCKET: prod-realdevice-mobile-automation-v1
-      WHEELS_BASE_URL: https://realdevice-cache.lambdatest.com
+      WHEELS_BASE_URL: https://prod-mobile-automation-artefects.lambdatest.com
     steps:
       - name: Resolve and validate tag
         id: ref
